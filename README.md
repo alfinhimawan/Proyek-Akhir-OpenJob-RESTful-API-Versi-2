@@ -200,6 +200,9 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   ├── 1793471447144_create-table-bookmarks.js
 │   ├── 1793471447644_create-table-authentications.js
 │   └── 1793546483523_create-table-documents.js
+├── OpenJob RESTful API V2 Test/          # Koleksi & environment Postman resmi dari Dicoding
+│   ├── [271] OpenJob API Test V2.postman_collection.json
+│   └── OpenJob API.postman_environment.json
 ├── uploads/                              # Penyimpanan berkas PDF (diabaikan git kecuali .gitkeep)
 │   └── .gitkeep
 ├── src/
@@ -222,14 +225,29 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   │   ├── jobsController.js
 │   │   ├── profileController.js
 │   │   └── usersController.js
-│   ├── exceptions/                       # Custom error classes (400, 401, 403, 404)
+│   ├── exceptions/                       # Custom error classes
+│   │   ├── AuthenticationError.js        # 401
+│   │   ├── AuthorizationError.js         # 403
+│   │   ├── ClientError.js                # Basis error client
+│   │   ├── InvariantError.js             # 400
+│   │   └── NotFoundError.js              # 404
 │   ├── middlewares/
 │   │   ├── auth.js                       # Verifikasi JWT Bearer token
 │   │   ├── errorHandler.js               # Error handler terpusat (ClientError, Multer, PG)
 │   │   ├── notFound.js                   # Handler 404 route tidak ditemukan
 │   │   ├── upload.js                     # Konfigurasi Multer (maks 5 MB, filter PDF)
 │   │   └── validate.js                   # Middleware validasi skema Joi reusable
-│   ├── routes/                           # Definisi route per resource + index.js
+│   ├── routes/                           # Definisi route per resource
+│   │   ├── index.js
+│   │   ├── applications.js
+│   │   ├── authentications.js
+│   │   ├── bookmarks.js
+│   │   ├── categories.js
+│   │   ├── companies.js
+│   │   ├── documents.js
+│   │   ├── jobs.js
+│   │   ├── profile.js
+│   │   └── users.js
 │   ├── services/                         # Logika bisnis, SQL berparameter & layanan infrastruktur
 │   │   ├── CacheService.js               # Layanan cache-aside Redis (TTL 3600 detik)
 │   │   ├── MailSender.js                 # Pengiriman email notifikasi lamaran via Nodemailer
@@ -244,12 +262,19 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   │   ├── jobsService.js
 │   │   └── usersService.js
 │   ├── utils/
-│   │   ├── asyncHandler.js
-│   │   ├── id.js
+│   │   ├── asyncHandler.js               # Pembungkus handler async
+│   │   ├── id.js                         # Generator ID unik (nanoid)
 │   │   ├── logger.js                     # Structured logger berbasis Pino
-│   │   ├── response.js
-│   │   └── tokenManager.js
+│   │   ├── response.js                   # Helper format response JSON standar
+│   │   └── tokenManager.js               # Pembuatan & verifikasi JWT
 │   ├── validators/                       # Skema validasi Joi per resource
+│   │   ├── applications.js
+│   │   ├── authentications.js
+│   │   ├── categories.js
+│   │   ├── common.js
+│   │   ├── companies.js
+│   │   ├── jobs.js
+│   │   └── users.js
 │   ├── app.js                            # Inisialisasi aplikasi Express
 │   └── server.js                         # Entry point HTTP server + graceful shutdown
 ├── .editorconfig
@@ -260,6 +285,7 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 ├── .prettierrc
 ├── docker-compose.yml                    # Layanan Redis 7 & RabbitMQ 3 Management lokal
 ├── eslint.config.js
+├── package-lock.json
 ├── package.json
 └── README.md
 ```
