@@ -1,0 +1,83 @@
+erDiagram
+    users ||--o{ companies : "owner_id (SET NULL)"
+    users ||--o{ jobs : "owner_id (SET NULL)"
+    users ||--o{ applications : "user_id (CASCADE)"
+    users ||--o{ bookmarks : "user_id (CASCADE)"
+    users ||--o{ authentications : "user_id (CASCADE)"
+    users ||--o{ documents : "user_id (CASCADE)"
+    companies ||--o{ jobs : "company_id (CASCADE)"
+    categories ||--o{ jobs : "category_id (RESTRICT)"
+    jobs ||--o{ applications : "job_id (CASCADE)"
+    jobs ||--o{ bookmarks : "job_id (CASCADE)"
+
+    users {
+        varchar id PK
+        varchar name
+        varchar email UK
+        text password
+        varchar role
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    documents {
+        varchar id PK
+        varchar user_id FK
+        varchar filename UK
+        varchar original_name
+        varchar mime_type
+        integer size
+        timestamptz created_at
+    }
+    companies {
+        varchar id PK
+        varchar owner_id FK
+        varchar name
+        varchar location
+        text description
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    categories {
+        varchar id PK
+        varchar name
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    jobs {
+        varchar id PK
+        varchar owner_id FK
+        varchar company_id FK
+        varchar category_id FK
+        varchar title
+        text description
+        varchar job_type
+        varchar experience_level
+        varchar location_type
+        varchar location_city
+        integer salary_min
+        integer salary_max
+        boolean is_salary_visible
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    applications {
+        varchar id PK
+        varchar user_id FK
+        varchar job_id FK
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    bookmarks {
+        varchar id PK
+        varchar user_id FK
+        varchar job_id FK
+        timestamptz created_at
+    }
+    authentications {
+        text token PK
+        varchar user_id FK
+        timestamptz created_at
+    }
+

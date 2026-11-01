@@ -1,0 +1,44 @@
+# Infrastruktur lokal untuk OpenJob V2 (Redis dan RabbitMQ).
+# Variabel dibaca otomatis dari berkas .env di folder ini.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: openjob-v2-redis
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - exec redis-server $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: openjob-v2-rabbitmq
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${RABBITMQ_PORT:-5672}:5672'
+      - '127.0.0.1:15672:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Isi RABBITMQ_USER di .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Isi RABBITMQ_PASSWORD di .env}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  redis_data:
+  rabbitmq_data:
