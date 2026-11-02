@@ -40,7 +40,7 @@
   - [Pengujian Manual Folder Documents](#2-pengujian-manual-folder-mandatory-documents)
   - [Mereset Database & Cache untuk Uji Ulang](#3-mereset-database--cache-untuk-uji-ulang)
 - [Dokumentasi Arsitektur & Keputusan Teknis](#-dokumentasi-arsitektur--keputusan-teknis)
-- [Penulis](#-penulis)
+- [Developer](#-developer)
 
 ---
 
@@ -500,7 +500,7 @@ docker exec openjob-v2-redis redis-cli FLUSHALL
 
 ---
 
-## 👤 Penulis
+## 👨‍💻 Developer
 
 - **Nama:** Alfin Himawan Santosa
 - **Program:** Asah led by Dicoding Supported by GoTo — PLK Akomodasi Klaim Universitas Negeri Yogyakarta (UNY) Studi Mandiri
