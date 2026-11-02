@@ -20,7 +20,7 @@
   - [Kriteria 1: Unggah & Tampilkan Berkas Dokumen PDF](#kriteria-1-restful-api-dapat-mengunggah-berkas-dokumen-pdf)
   - [Kriteria 2: Caching pada RESTful API (Redis)](#kriteria-2-menerapkan-caching-pada-restful-api-redis)
   - [Kriteria 3: Message Queue (RabbitMQ) & Email Consumer](#kriteria-3-menerapkan-message-queue-rabbitmq)
-  - [Fondasi V1 yang Dipertahankan](#fondasi-v1-yang-dipertahankan)
+  - [Fondasi V1 & Standar Produksi yang Diterapkan](#fondasi-v1--standar-produksi-yang-diterapkan)
 - [Daftar Endpoint REST API](#-daftar-endpoint-rest-api)
 - [Format Response](#-format-response)
 - [Struktur Direktori](#-struktur-direktori)
@@ -49,7 +49,7 @@
 
 1. **Penyimpanan & penayangan berkas CV/Resume PDF** menggunakan `multer` dengan validasi berlapis (ukuran, MIME type, ekstensi, dan _magic bytes_ `%PDF-`).
 2. **Server-side caching menggunakan Redis** berpola _cache-aside_ dengan TTL 1 jam, header sumber data (`X-Data-Source`), proteksi kepemilikan data pada cache, dan invalidasi otomatis setiap terjadi mutasi data.
-3. **Pemrosesan asinkron menggunakan RabbitMQ & Nodemailer** melalui proses _consumer_ terpisah yang mengirimkan email notifikasi lamaran baru secara eksklusif kepada pemilik lowongan (_job owner_).
+3. **Pemrosesan asinkron tangguh menggunakan RabbitMQ, Transactional Outbox, Dead Letter Queue (DLQ), & Nodemailer** yang menjamin konsistensi atomik pengiriman notifikasi email eksklusif kepada pemilik lowongan (_job owner_), isolasi pesan bermasalah ke DLX/DLQ, serta observabilitas penuh melalui **`pino-http`** _structured request logging_.
 
 ---
 
@@ -92,18 +92,19 @@
 ### Kriteria 3: Menerapkan Message Queue (RabbitMQ)
 
 - **Basic & Skilled**
-  - Saat kandidat melamar pekerjaan (`POST /applications`), `ProducerService` mengirim pesan ke queue _durable_ `job_applications` di **RabbitMQ** setelah transaksi database _commit_.
+  - Saat kandidat melamar pekerjaan (`POST /applications`), aplikasi menerapkan **Transactional Outbox Pattern**: baris lamaran dan pesan event pada tabel `outbox_messages` disimpan secara atomik dalam satu transaksi database, lalu `OutboxService` + `ProducerService` meneruskannya ke queue _durable_ `job_applications` di **RabbitMQ** menggunakan _publisher confirm_ (`ConfirmChannel`).
   - Payload pesan hanya berisi **`{ "application_id": "<id>" }`** dengan sifat _persistent_.
   - Kredensial RabbitMQ dibaca dari environment variables: **`RABBITMQ_HOST`**, **`RABBITMQ_PORT`**, **`RABBITMQ_USER`**, dan **`RABBITMQ_PASSWORD`** (serta dukungan opsional `AMQP_URL`).
-  - Tersedia program **consumer terpisah** (`src/consumer/index.js`) yang memproses antrean secara _asynchronous_ dengan _manual acknowledgement_ (`ack`) dan _bounded retry_.
+  - Tersedia program **consumer terpisah** (`src/consumer/index.js`) yang memproses antrean secara _asynchronous_ dengan _manual acknowledgement_ (`ack`/`nack`), _bounded retry_, serta **Dead Letter Exchange (`job_applications.dlx`) & Dead Letter Queue (`job_applications.dlq`)** untuk mengisolasi _poison messages_ maupun kegagalan pengiriman email setelah batas _retry_ maksimum.
 - **Advanced**
   - Consumer melakukan query ke PostgreSQL berdasarkan `application_id` untuk mencari **pemilik lowongan (`job owner`)** serta rincian pelamar (tidak ada alamat email yang di-_hardcode_).
   - Mengirimkan email notifikasi menggunakan **Nodemailer** (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`) **hanya kepada pemilik lowongan** (bukan kepada pelamar).
   - Isi email memuat tiga informasi wajib dari database: **Nama Pelamar**, **Email Pelamar**, dan **Tanggal Lamaran** (beserta judul lowongan dan nama perusahaan).
 
-### Fondasi V1 yang Dipertahankan
+### Fondasi V1 & Standar Produksi yang Diterapkan
 
 - Database PostgreSQL ternormalisasi (3NF), _parameterized SQL queries_ (`$1, $2`), transaksi `BEGIN/COMMIT/ROLLBACK` dengan `FOR SHARE`, serta autentikasi/otorisasi berbasis **JWT Bearer Token** (`ACCESS_TOKEN_KEY` & `REFRESH_TOKEN_KEY`) dan **bcrypt**.
+- **Structured HTTP Request Logging (`pino-http`):** setiap request masuk otomatis tercatat beserta `X-Request-Id`, metode, URL, `statusCode`, sumber data (`X-Data-Source`), dan latensi (`responseTime`) tanpa membocorkan header `Authorization`.
 - Validasi terpusat menggunakan **Joi** (termasuk validasi seluruh environment variable saat _startup_), _structured logging_ dengan **Pino** tanpa `console.log`, keamanan HTTP dasar dengan **Helmet** & **CORS**, serta **graceful shutdown** (`SIGINT`/`SIGTERM`) pada HTTP server maupun consumer.
 
 ---
@@ -189,7 +190,7 @@ Base URL lokal: `http://localhost:3000`
 ```text
 Proyek Akhir-OpenJob RESTful API Versi 2/
 ├── docs/
-│   ├── ERD-OpenJob-versi-2.png           # Diagram ERD Versi 2 (8 tabel)
+│   ├── ERD-OpenJob-versi-2.png           # Diagram ERD Versi 2 (9 tabel)
 │   └── ERD-OpenJob-versi-2.mmd           # Sumber diagram ERD (Mermaid)
 ├── migrations/                           # Migration node-pg-migrate (timestamp otomatis)
 │   ├── 1793471444624_create-table-users.js
@@ -199,7 +200,8 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   ├── 1793471446644_create-table-applications.js
 │   ├── 1793471447144_create-table-bookmarks.js
 │   ├── 1793471447644_create-table-authentications.js
-│   └── 1793546483523_create-table-documents.js
+│   ├── 1793546483523_create-table-documents.js
+│   └── 1793604476836_create-table-outbox-messages.js
 ├── OpenJob RESTful API V2 Test/          # Koleksi & environment Postman resmi dari Dicoding
 │   ├── [271] OpenJob API Test V2.postman_collection.json
 │   └── OpenJob API.postman_environment.json
@@ -210,11 +212,11 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   │   ├── database.js                   # Pool PostgreSQL bersama, transaksi & penutupan pool
 │   │   ├── env.js                        # Validasi env dengan Joi & konstanta terpusat
 │   │   ├── mail.js                       # Konfigurasi transporter SMTP Nodemailer
-│   │   ├── rabbitmq.js                   # Koneksi & channel RabbitMQ bersama
-│   │   └── redis.js                      # Koneksi client Redis bersama & reconnect strategy
+│   │   ├── rabbitmq.js                   # ConfirmChannel & deklarasi topologi utama + DLX/DLQ
+│   │   └── redis.js                      # Koneksi client Redis bersama & cooldown fallback
 │   ├── consumer/
 │   │   ├── index.js                      # Entry point mandiri consumer RabbitMQ + graceful shutdown
-│   │   └── listener.js                   # Pemrosesan pesan, bounded retry & pengiriman email
+│   │   └── listener.js                   # Pemrosesan pesan, bounded retry, DLQ routing & kirim email
 │   ├── controllers/                      # Handler HTTP tipis (tanpa query SQL)
 │   │   ├── applicationsController.js
 │   │   ├── authenticationsController.js
@@ -234,6 +236,7 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   ├── middlewares/
 │   │   ├── auth.js                       # Verifikasi JWT Bearer token
 │   │   ├── errorHandler.js               # Error handler terpusat (ClientError, Multer, PG)
+│   │   ├── httpLogger.js                 # Structured HTTP request logging (pino-http + X-Request-Id)
 │   │   ├── notFound.js                   # Handler 404 route tidak ditemukan
 │   │   ├── upload.js                     # Konfigurasi Multer (maks 5 MB, filter PDF)
 │   │   └── validate.js                   # Middleware validasi skema Joi reusable
@@ -251,7 +254,8 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 │   ├── services/                         # Logika bisnis, SQL berparameter & layanan infrastruktur
 │   │   ├── CacheService.js               # Layanan cache-aside Redis (TTL 3600 detik)
 │   │   ├── MailSender.js                 # Pengiriman email notifikasi lamaran via Nodemailer
-│   │   ├── ProducerService.js            # Pengiriman pesan durable ke RabbitMQ
+│   │   ├── OutboxService.js              # Transactional Outbox & background relay worker
+│   │   ├── ProducerService.js            # Pengiriman pesan durable + publisher confirm ke RabbitMQ
 │   │   ├── StorageService.js             # Validasi magic bytes PDF, path aman & manajemen file
 │   │   ├── applicationsService.js
 │   │   ├── authenticationsService.js
@@ -296,16 +300,17 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 
 ![ERD OpenJob Versi 2](docs/ERD-OpenJob-versi-2.png)
 
-| Tabel             | Keterangan                                                  | Relasi & aturan `ON DELETE`                                                                                          |
-| :---------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| `users`           | Data pengguna. Kolom `email` bersifat **unik**.             | —                                                                                                                    |
-| `documents`       | Metadata berkas PDF yang diunggah (`filename` **unik**).    | `user_id` → `users` (`CASCADE`)                                                                                      |
-| `companies`       | Profil perusahaan yang dibuat pengguna.                     | `owner_id` → `users` (`SET NULL`)                                                                                    |
-| `categories`      | Kategori pekerjaan.                                         | —                                                                                                                    |
-| `jobs`            | Lowongan pekerjaan beserta pemilik lowongan (`owner_id`).   | `company_id` → `companies` (`CASCADE`), `category_id` → `categories` (`RESTRICT`), `owner_id` → `users` (`SET NULL`) |
-| `applications`    | Lamaran kandidat. Pasangan `user_id` + `job_id` **unik**.   | `user_id` → `users` (`CASCADE`), `job_id` → `jobs` (`CASCADE`)                                                       |
-| `bookmarks`       | Lowongan tersimpan. Pasangan `user_id` + `job_id` **unik**. | `user_id` → `users` (`CASCADE`), `job_id` → `jobs` (`CASCADE`)                                                       |
-| `authentications` | Daftar refresh token aktif.                                 | `user_id` → `users` (`CASCADE`)                                                                                      |
+| Tabel             | Keterangan                                                             | Relasi & aturan `ON DELETE`                                                                                          |
+| :---------------- | :--------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| `users`           | Data pengguna. Kolom `email` bersifat **unik**.                        | —                                                                                                                    |
+| `documents`       | Metadata berkas PDF yang diunggah (`filename` **unik**).               | `user_id` → `users` (`CASCADE`)                                                                                      |
+| `companies`       | Profil perusahaan yang dibuat pengguna.                                | `owner_id` → `users` (`SET NULL`)                                                                                    |
+| `categories`      | Kategori pekerjaan.                                                    | —                                                                                                                    |
+| `jobs`            | Lowongan pekerjaan beserta pemilik lowongan (`owner_id`).              | `company_id` → `companies` (`CASCADE`), `category_id` → `categories` (`RESTRICT`), `owner_id` → `users` (`SET NULL`) |
+| `applications`    | Lamaran kandidat. Pasangan `user_id` + `job_id` **unik**.              | `user_id` → `users` (`CASCADE`), `job_id` → `jobs` (`CASCADE`)                                                       |
+| `outbox_messages` | Antrean event Transactional Outbox (`pending`, `published`, `failed`). | `aggregate_id` merujuk ke agregat domain (contoh `applications.id`)                                                  |
+| `bookmarks`       | Lowongan tersimpan. Pasangan `user_id` + `job_id` **unik**.            | `user_id` → `users` (`CASCADE`), `job_id` → `jobs` (`CASCADE`)                                                       |
+| `authentications` | Daftar refresh token aktif.                                            | `user_id` → `users` (`CASCADE`)                                                                                      |
 
 ---
 
@@ -319,7 +324,7 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 - **Message Broker:** [RabbitMQ](https://www.rabbitmq.com/) (`amqplib`)
 - **SMTP Mailer:** [Nodemailer](https://nodemailer.com/)
 - **Validasi & Keamanan:** [Joi](https://joi.dev/), [`jsonwebtoken`](https://github.com/auth0/node-jsonwebtoken), [`bcrypt`](https://github.com/kelektiv/node.bcrypt.js), [`helmet`](https://helmetjs.github.io/), [`cors`](https://github.com/expressjs/cors)
-- **Logging & Kualitas Kode:** [`pino`](https://getpino.io/), [`nodemon`](https://nodemon.io/), [ESLint](https://eslint.org/), [Prettier](https://prettier.io/)
+- **Logging & Kualitas Kode:** [`pino`](https://getpino.io/), [`pino-http`](https://github.com/pinojs/pino-http), [`nodemon`](https://nodemon.io/), [ESLint](https://eslint.org/), [Prettier](https://prettier.io/)
 
 ---
 
@@ -423,7 +428,7 @@ Jalankan **dua terminal terpisah** di root proyek:
 | `npm run start:consumer:dev` | Menjalankan consumer RabbitMQ dengan `nodemon`              |
 | `npm run migrate`            | Wrapper CLI `node-pg-migrate`                               |
 | `npm run migrate:up`         | Menjalankan seluruh migration yang belum diterapkan         |
-| `npm run migrate:down`       | Membatalkan migration terakhir (`-- 8` untuk semua 8 tabel) |
+| `npm run migrate:down`       | Membatalkan migration terakhir (`-- 9` untuk semua 9 tabel) |
 | `npm run lint`               | Memeriksa kualitas & aturan sintaks kode dengan ESLint      |
 | `npm run format`             | Merapikan format kode dengan Prettier                       |
 
@@ -459,7 +464,7 @@ Buka folder **`[Mandatory] Documents`** di Postman dan jalankan request satu per
 Karena `users.email` bersifat unik dan Redis menyimpan cache selama 1 jam, jalankan perintah berikut sebelum mengulang seluruh rangkaian pengujian dari awal:
 
 ```bash
-npm run migrate:down -- 8 && npm run migrate:up
+npm run migrate:down -- 9 && npm run migrate:up
 docker exec openjob-v2-redis redis-cli FLUSHALL
 ```
 
@@ -478,12 +483,18 @@ docker exec openjob-v2-redis redis-cli FLUSHALL
 - Pada `GET /applications/:id`, nilai cache menyimpan `{ applicantId, jobOwnerId, data }` sehingga pada saat _cache hit_, otorisasi tetap diverifikasi secara instan tanpa query tambahan ke database.
 - Pada `GET /applications/user/:userId` dan `GET /applications/job/:jobId`, cache hanya dibaca dan ditulis apabila peminta adalah pemilik sah data tersebut (`{ ownerId, data }`). Peminta lain tetap dilayani langsung dari PostgreSQL sesuai hak aksesnya tanpa mencemari cache pemilik.
 - Selain aturan invalidasi wajib di dokumen ketentuan, API juga menginvalidasi cache terkait saat `DELETE /applications/:id`, `DELETE /jobs/:id`, dan `DELETE /companies/:id` guna menjamin tidak ada data basi (_stale cache_) pasca penghapusan.
-- Apabila Redis mengalami gangguan, `CacheService` mencatat peringatan melalui logger dan melakukan _fallback_ otomatis ke PostgreSQL sehingga API tetap beroperasi normal.
+- Apabila Redis mengalami gangguan, `CacheService` mencatat peringatan melalui logger dan melakukan _fallback_ otomatis ke PostgreSQL dengan mekanisme _cooldown_ koneksi sehingga API tetap beroperasi responsif.
 
-### 3. Reliabilitas Producer & Consumer RabbitMQ
+### 3. Transactional Outbox Pattern, Publisher Confirms, & Dead Letter Queue (DLQ)
 
-- Pengiriman pesan `{ "application_id": "<id>" }` ke RabbitMQ dilakukan **setelah** transaksi pembuatan lamaran di PostgreSQL berhasil di-_commit_, menggunakan queue `durable` dan pesan `persistent`. Apabila RabbitMQ sedang tidak tersedia sementara waktu, kegagalan kirim dicatat ke log error tanpa membatalkan lamaran kandidat yang sudah sah tersimpan.
-- Consumer berjalan sebagai proses terpisah dengan `prefetch(5)`, koneksi SMTP _pooled_, _manual acknowledgement_ (`channel.ack`), mekanisme _bounded retry_ (maksimal 3 percobaan untuk kendala jaringan sementara), serta penanganan aman untuk payload tidak valid atau lamaran yang telah dihapus agar antrean tidak pernah mengalami _infinite loop_.
+- **Eliminasi _Dual-Write_ melalui Transactional Outbox (`outbox_messages`):** Saat kandidat melamar (`POST /applications`), pencatatan baris `applications` dan pesan event pada tabel `outbox_messages` dieksekusi di dalam **satu transaksi PostgreSQL yang sama**. Apabila transaksi gagal (misalnya duplikasi lamaran), keduanya ter-_rollback_ bersih; apabila transaksi _commit_, notifikasi dijamin tidak akan pernah hilang walaupun RabbitMQ sedang _down_ atau proses server terhenti mendadak.
+- **Outbox Relay & Publisher Confirms (`ConfirmChannel`):** Segera setelah _commit_ maupun secara berkala di latar belakang, `OutboxService` mengklaim pesan `pending` menggunakan `FOR UPDATE SKIP LOCKED` (aman terhadap beberapa instansi server paralel), mempublikasikannya ke queue `job_applications` dengan menunggu konfirmasi broker (`ConfirmChannel`), lalu memperbarui status menjadi `published` (atau menjadwalkan _exponential backoff_ otomatis apabila broker sedang tidak terjangkau).
+- **Dead Letter Exchange (`job_applications.dlx`) & Dead Letter Queue (`job_applications.dlq`):** Queue utama `job_applications` dikonfigurasi dengan `x-dead-letter-exchange: job_applications.dlx` dan `x-dead-letter-routing-key: job_applications.dead`. Pada sisi consumer (`src/consumer/listener.js`), baik _poison message_ (payload rusak / tanpa `application_id`) maupun kegagalan pengiriman email setelah melewati batas percobaan (`CONSUMER_MAX_RETRIES`) akan di-`nack` (`requeue = false`) sehingga RabbitMQ otomatis mengalihkannya ke `job_applications.dlq` untuk diinspeksi atau di-_replay_ ulang tanpa menyumbat antrean utama.
+
+### 4. Structured HTTP Request Logging (`pino-http`)
+
+- Middleware `src/middlewares/httpLogger.js` terpasang di tingkat aplikasi (`src/app.js`) menggunakan `pino-http` dan instance logger bersama.
+- Setiap request masuk diberi/meneruskan header korelasi `X-Request-Id`, dicatat dengan level log adaptif (`info` untuk `2xx/3xx`, `warn` untuk `4xx`, `error` untuk `5xx`), menyertakan `statusCode`, `dataSource` (`cache`/`database`), serta latensi eksekusi (`responseTime`), sembari menyaring serializer `req` agar header sensitif seperti `Authorization` tidak pernah ikut tercatat ke dalam log.
 
 ---
 

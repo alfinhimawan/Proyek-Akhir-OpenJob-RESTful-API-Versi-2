@@ -12,9 +12,18 @@ export const DATA_SOURCE_CACHE = 'cache';
 export const DATA_SOURCE_DATABASE = 'database';
 
 export const APPLICATION_QUEUE_NAME = 'job_applications';
+export const APPLICATION_DLX_NAME = 'job_applications.dlx';
+export const APPLICATION_DLQ_NAME = 'job_applications.dlq';
+export const APPLICATION_DLQ_ROUTING_KEY = 'job_applications.dead';
+
 export const CONSUMER_PREFETCH_COUNT = 5;
 export const CONSUMER_MAX_RETRIES = 3;
 export const CONSUMER_RETRY_DELAY_MS = 2000;
+
+export const OUTBOX_POLL_INTERVAL_MS = 3000;
+export const OUTBOX_BATCH_SIZE = 20;
+export const OUTBOX_MAX_ATTEMPTS = 10;
+export const OUTBOX_BASE_RETRY_DELAY_MS = 2000;
 
 export const UPLOADS_DIRECTORY = path.resolve(process.cwd(), 'uploads');
 

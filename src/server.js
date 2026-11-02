@@ -3,11 +3,13 @@ import { closeDatabasePool } from './config/database.js';
 import config from './config/env.js';
 import { closeRabbitConnection } from './config/rabbitmq.js';
 import { closeRedisClient } from './config/redis.js';
+import { outboxService } from './services/OutboxService.js';
 import logger from './utils/logger.js';
 
 const { host, port } = config.server;
 
 const server = app.listen(port, host, () => {
+  outboxService.startRelay();
   logger.info(`OpenJob RESTful API V2 berjalan pada http://${host}:${port}`);
 });
 
@@ -29,6 +31,8 @@ const gracefulShutdown = async (signal) => {
       resolve();
     });
   });
+
+  await outboxService.stopRelay();
 
   await Promise.allSettled([
     closeRedisClient(),

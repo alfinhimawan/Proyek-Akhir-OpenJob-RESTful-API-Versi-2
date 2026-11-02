@@ -1,11 +1,15 @@
 import pool, { withTransaction } from '../config/database.js';
-import { DATA_SOURCE_CACHE, DATA_SOURCE_DATABASE } from '../config/env.js';
+import {
+  APPLICATION_QUEUE_NAME,
+  DATA_SOURCE_CACHE,
+  DATA_SOURCE_DATABASE,
+} from '../config/env.js';
 import AuthorizationError from '../exceptions/AuthorizationError.js';
 import InvariantError from '../exceptions/InvariantError.js';
 import NotFoundError from '../exceptions/NotFoundError.js';
 import { generateId } from '../utils/id.js';
 import { cacheService } from './CacheService.js';
-import { producerService } from './ProducerService.js';
+import { outboxService } from './OutboxService.js';
 
 const APPLICATION_LIST_SELECT = `
   SELECT a.id, a.user_id, a.job_id, a.status, a.created_at, a.updated_at,
@@ -52,8 +56,8 @@ const findApplicationAccess = async (id) => {
 };
 
 /**
- * Membuat lamaran pekerjaan baru dalam transaksi database, menghapus cache list terkait,
- * lalu mengirim pesan `{ application_id }` ke RabbitMQ.
+ * Membuat lamaran pekerjaan baru beserta event outbox secara atomik dalam satu transaksi database
+ * (Transactional Outbox Pattern), menghapus cache list terkait, lalu memicu pengiriman outbox.
  * @param {string} userId
  * @param {{ job_id: string, status: string }} payload
  * @returns {Promise<{ id: string, user_id: string, job_id: string, status: string }>}
@@ -78,7 +82,16 @@ export const addApplication = async (userId, { job_id: jobId, status }) => {
        RETURNING id, user_id, job_id, status`,
       [generateId('application'), userId, jobId, status],
     );
-    return result.rows[0];
+    const createdApplication = result.rows[0];
+
+    await outboxService.enqueueMessage(client, {
+      aggregateType: 'application',
+      aggregateId: createdApplication.id,
+      queue: APPLICATION_QUEUE_NAME,
+      payload: { application_id: createdApplication.id },
+    });
+
+    return createdApplication;
   });
 
   await cacheService.delete([
@@ -86,7 +99,7 @@ export const addApplication = async (userId, { job_id: jobId, status }) => {
     getApplicationsByJobCacheKey(jobId),
   ]);
 
-  await producerService.sendApplicationCreated(application.id);
+  outboxService.triggerImmediateDispatch();
 
   return application;
 };

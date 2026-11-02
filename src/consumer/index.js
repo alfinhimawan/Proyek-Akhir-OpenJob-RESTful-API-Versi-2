@@ -1,7 +1,16 @@
 import { closeDatabasePool } from '../config/database.js';
-import { APPLICATION_QUEUE_NAME, CONSUMER_PREFETCH_COUNT } from '../config/env.js';
+import {
+  APPLICATION_DLQ_NAME,
+  APPLICATION_DLX_NAME,
+  APPLICATION_QUEUE_NAME,
+  CONSUMER_PREFETCH_COUNT,
+} from '../config/env.js';
 import { closeMailTransporter } from '../config/mail.js';
-import { closeRabbitConnection, getRabbitChannel } from '../config/rabbitmq.js';
+import {
+  closeRabbitConnection,
+  ensureApplicationMessagingTopology,
+} from '../config/rabbitmq.js';
+import { outboxService } from '../services/OutboxService.js';
 import logger from '../utils/logger.js';
 import { createApplicationMessageListener } from './listener.js';
 
@@ -16,6 +25,8 @@ const shutdownConsumer = async (signal) => {
   isShuttingDown = true;
 
   logger.info({ signal }, 'Menerima sinyal berhenti, menutup consumer RabbitMQ...');
+
+  await outboxService.stopRelay();
 
   try {
     if (activeChannel && consumerTag) {
@@ -34,8 +45,7 @@ const shutdownConsumer = async (signal) => {
 
 const startConsumer = async () => {
   try {
-    activeChannel = await getRabbitChannel();
-    await activeChannel.assertQueue(APPLICATION_QUEUE_NAME, { durable: true });
+    activeChannel = await ensureApplicationMessagingTopology();
     await activeChannel.prefetch(CONSUMER_PREFETCH_COUNT);
 
     const listener = createApplicationMessageListener(activeChannel);
@@ -44,12 +54,19 @@ const startConsumer = async () => {
     });
     consumerTag = consumed.consumerTag;
 
+    outboxService.startRelay();
+
     logger.info(
-      { queue: APPLICATION_QUEUE_NAME },
+      {
+        queue: APPLICATION_QUEUE_NAME,
+        dlx: APPLICATION_DLX_NAME,
+        dlq: APPLICATION_DLQ_NAME,
+      },
       'OpenJob RabbitMQ consumer aktif dan menunggu pesan lamaran...',
     );
   } catch (error) {
     logger.error({ err: error }, 'Gagal menjalankan consumer RabbitMQ');
+    await outboxService.stopRelay();
     closeMailTransporter();
     await Promise.allSettled([closeRabbitConnection(), closeDatabasePool()]);
     process.exit(1);

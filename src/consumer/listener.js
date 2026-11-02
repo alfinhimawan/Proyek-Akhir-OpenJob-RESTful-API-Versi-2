@@ -1,4 +1,8 @@
-import { CONSUMER_MAX_RETRIES, CONSUMER_RETRY_DELAY_MS } from '../config/env.js';
+import {
+  APPLICATION_DLQ_NAME,
+  CONSUMER_MAX_RETRIES,
+  CONSUMER_RETRY_DELAY_MS,
+} from '../config/env.js';
 import { getNotificationDetailsByApplicationId } from '../services/applicationsService.js';
 import { mailSender } from '../services/MailSender.js';
 import logger from '../utils/logger.js';
@@ -48,6 +52,8 @@ const executeWithRetry = async (operation, context) => {
 
 /**
  * Membuat fungsi listener pesan RabbitMQ untuk memproses notifikasi lamaran pekerjaan.
+ * Pesan tidak valid (poison message) atau yang tetap gagal setelah batas retry maksimum
+ * akan di-nack (`requeue = false`) sehingga otomatis dialihkan oleh RabbitMQ ke Dead Letter Queue (DLQ).
  * @param {import('amqplib').Channel} channel
  */
 export const createApplicationMessageListener = (channel) => async (message) => {
@@ -59,11 +65,11 @@ export const createApplicationMessageListener = (channel) => async (message) => 
   const applicationId = parseApplicationMessage(rawContent);
 
   if (!applicationId) {
-    logger.warn(
-      { rawContent },
-      'Pesan RabbitMQ tidak valid atau tidak memuat application_id, pesan diabaikan',
+    logger.error(
+      { rawContent, dlq: APPLICATION_DLQ_NAME },
+      'Poison message terdeteksi (format tidak valid / tanpa application_id), dialihkan ke DLQ',
     );
-    channel.ack(message);
+    channel.nack(message, false, false);
     return;
   }
 
@@ -108,9 +114,14 @@ export const createApplicationMessageListener = (channel) => async (message) => 
     channel.ack(message);
   } catch (error) {
     logger.error(
-      { err: error, applicationId },
-      'Gagal memproses notifikasi lamaran setelah batas retry maksimum, pesan di-ack agar tidak terjadi infinite loop',
+      {
+        err: error,
+        applicationId,
+        maxRetries: CONSUMER_MAX_RETRIES,
+        dlq: APPLICATION_DLQ_NAME,
+      },
+      'Gagal memproses notifikasi lamaran setelah batas retry maksimum, pesan dialihkan ke DLQ',
     );
-    channel.ack(message);
+    channel.nack(message, false, false);
   }
 };

@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import errorHandler from './middlewares/errorHandler.js';
+import httpLogger from './middlewares/httpLogger.js';
 import notFound from './middlewares/notFound.js';
 import routes from './routes/index.js';
 
@@ -13,6 +14,7 @@ app.use(
   }),
 );
 app.use(cors());
+app.use(httpLogger);
 app.use(express.json());
 
 app.use(routes);

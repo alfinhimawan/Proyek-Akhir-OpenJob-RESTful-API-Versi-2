@@ -2,11 +2,13 @@ import { createClient } from 'redis';
 import config from './env.js';
 import logger from '../utils/logger.js';
 
-const CONNECT_TIMEOUT_MS = 2000;
-const MAX_RECONNECT_DELAY_MS = 5000;
+const CONNECT_TIMEOUT_MS = 1500;
+const MAX_RECONNECT_RETRIES = 2;
+const RETRY_COOLDOWN_MS = 5000;
 
 let client = null;
 let connectPromise = null;
+let nextConnectAttemptAt = 0;
 
 const createRedisInstance = () => {
   const instance = createClient({
@@ -14,7 +16,12 @@ const createRedisInstance = () => {
       host: config.redis.host,
       port: config.redis.port,
       connectTimeout: CONNECT_TIMEOUT_MS,
-      reconnectStrategy: (retries) => Math.min(retries * 250, MAX_RECONNECT_DELAY_MS),
+      reconnectStrategy: (retries) => {
+        if (retries >= MAX_RECONNECT_RETRIES) {
+          return new Error('Redis tidak dapat dijangkau setelah batas percobaan');
+        }
+        return (retries + 1) * 200;
+      },
     },
     password: config.redis.password,
     disableOfflineQueue: true,
@@ -24,27 +31,43 @@ const createRedisInstance = () => {
     logger.warn({ err: error }, 'Koneksi Redis mengalami gangguan');
   });
 
+  instance.on('end', () => {
+    if (client === instance) {
+      client = null;
+    }
+  });
+
   return instance;
 };
 
 /**
  * Mengambil instance client Redis bersama dan memastikan koneksi siap dipakai.
+ * Dilengkapi cooldown singkat saat Redis sedang mati agar fallback ke PostgreSQL instan.
  * @returns {Promise<import('redis').RedisClientType>}
  */
 export const getRedisClient = async () => {
+  if (client?.isReady) {
+    return client;
+  }
+
+  if (Date.now() < nextConnectAttemptAt) {
+    throw new Error('Redis sedang dalam masa cooldown pemulihan koneksi');
+  }
+
   if (!client) {
     client = createRedisInstance();
   }
 
-  if (client.isReady) {
-    return client;
-  }
-
   if (!client.isOpen && !connectPromise) {
-    connectPromise = client
+    const targetClient = client;
+    connectPromise = targetClient
       .connect()
       .catch((error) => {
-        client = null;
+        nextConnectAttemptAt = Date.now() + RETRY_COOLDOWN_MS;
+        targetClient.destroy();
+        if (client === targetClient) {
+          client = null;
+        }
         throw error;
       })
       .finally(() => {
@@ -76,8 +99,10 @@ export const closeRedisClient = async () => {
   client = null;
 
   try {
-    if (current.isOpen) {
+    if (current.isReady) {
       await current.quit();
+    } else {
+      current.destroy();
     }
   } catch (error) {
     logger.warn(
