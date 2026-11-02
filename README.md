@@ -5,6 +5,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
 [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![JWT](https://img.shields.io/badge/JWT-Bearer_Token-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
 
 > **Proyek Akhir:** _OpenJob RESTful API Versi 2_  
@@ -323,6 +324,7 @@ Proyek Akhir-OpenJob RESTful API Versi 2/
 - **Caching:** [Redis](https://redis.io/) (`redis`)
 - **Message Broker:** [RabbitMQ](https://www.rabbitmq.com/) (`amqplib`)
 - **SMTP Mailer:** [Nodemailer](https://nodemailer.com/)
+- **Containerization (Infrastruktur Lokal):** [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/) (`redis:7-alpine`, `rabbitmq:3-management-alpine`)
 - **Validasi & Keamanan:** [Joi](https://joi.dev/), [`jsonwebtoken`](https://github.com/auth0/node-jsonwebtoken), [`bcrypt`](https://github.com/kelektiv/node.bcrypt.js), [`helmet`](https://helmetjs.github.io/), [`cors`](https://github.com/expressjs/cors)
 - **Logging & Kualitas Kode:** [`pino`](https://getpino.io/), [`pino-http`](https://github.com/pinojs/pino-http), [`nodemon`](https://nodemon.io/), [ESLint](https://eslint.org/), [Prettier](https://prettier.io/)
 
